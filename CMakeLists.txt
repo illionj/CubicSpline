@@ -16,6 +16,25 @@ set (CMAKE_CXX_FLAGS_RELEASE             "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBU
 
 add_subdirectory("third_party/eigen" EXCLUDE_FROM_ALL) 
 
+# ===== unified output directory =====
+set(BUNDLE_DIR "${CMAKE_BINARY_DIR}/bundle")
+
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${BUNDLE_DIR}")   # executables
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${BUNDLE_DIR}")   # shared libs (.so/.dylib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${BUNDLE_DIR}")   # static libs (.a/.lib)
+
+foreach(cfg IN ITEMS Debug Release RelWithDebInfo MinSizeRel)
+  string(TOUPPER "${cfg}" cfg_uc)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${cfg_uc} "${BUNDLE_DIR}")
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${cfg_uc} "${BUNDLE_DIR}")
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${cfg_uc} "${BUNDLE_DIR}")
+endforeach()
+
+# ===== copy scripts =====
+file(GLOB SCRIPT_FILES "${CMAKE_SOURCE_DIR}/scripts/*")
+file(COPY ${SCRIPT_FILES} DESTINATION "${BUNDLE_DIR}/scripts")
+
 
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN YES)

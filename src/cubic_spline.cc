@@ -154,16 +154,15 @@ class CubicSpline1D {
     return a_(i) + b_(i) * dx + c_(i) * dx * dx + d_(i) * dx * dx * dx;
   }
 
-  /// 段数 = 节点数 − 1
+
   size_t segmentCount() const { return nx_ - 1; }
 
-  /// 第 i 段左端弧长（= 节点 s_i）
+
   double knot(size_t i) const { return s_(i); }
 
-  /// 第 i 段弧长 h_i  (= s_{i+1} − s_i)
+
   double segmentLength(size_t i) const { return h_(i); }
 
-  /// 第 i 段四个系数 a,b,c,d  →  [a0,a1,a2,a3]
   Eigen::Vector4d coeff(size_t i) const { return {a_(i), b_(i), c_(i), d_(i)}; }
 
  private:
@@ -202,19 +201,19 @@ Eigen::VectorXd xy2s(const Eigen::VectorXd &x, const Eigen::VectorXd &y) {
   if (n < 2)  // 0 点或 1 点时，弧长恒为 0
     return Eigen::VectorXd::Zero(n);
 
-  /* ------- 逐段长度 -------- */
+
   Eigen::ArrayXd dx = x.tail(n - 1) - x.head(n - 1);
   Eigen::ArrayXd dy = y.tail(n - 1) - y.head(n - 1);
   Eigen::ArrayXd seg = (dx.square() + dy.square()).sqrt();  // 每段弧长
 
-  /* ------- 累加得到弧长参数 s -------- */
+
   Eigen::VectorXd s(n);
   s(0) = 0.0;
 
-#if defined(EIGEN_CXX11_TENSOR_MODULE)     // <-- 只要打开 unsupported/Tensor 就有 cumsum
+#if defined(EIGEN_CXX11_TENSOR_MODULE)    
   s.tail(n - 1) = seg.cumsum(0).matrix();  // 0 轴（唯一轴）做前缀和 :contentReference[oaicite:0]{index=0}
 #else
-  // 低版本或不想启用 Tensor 时：手写一行循环，但仍然只操作 Eigen 对象
+  
   s.tail(n - 1) = seg.matrix();
   for (Eigen::Index i = 1; i < n - 1; ++i) s(i + 1) += s(i);  // 等价于 inclusive_scan
 #endif
@@ -299,14 +298,12 @@ struct CubicSpline2D::CubicSpline2DImpl {
 
   std::pair<double, double> pointAt(double s) { return std::pair<double, double>(cx.evaluate(s), cy.evaluate(s)); }
 
-  // ----------------------------------------------
-  // 查询某 s 处的斜率   （dy/dx 形式）
-  // ----------------------------------------------
+
   double slopeAt(double s) const {
     double dx = cx.firstDerivative(s);
     double dy = cy.firstDerivative(s);
 
-    // 防止分母过小导致数值不稳
+
     constexpr double kEps = 1e-12;
     if (std::abs(dx) < kEps) {
       return (dy > 0.0 ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity());
@@ -315,108 +312,9 @@ struct CubicSpline2D::CubicSpline2DImpl {
     // return std::atan2(dy, dx);   // 航向角（弧度）
   }
 
-  // ClosestState continuousClosest(double x0,
-  //                                double y0,
-  //                                double s_max
-  //                                ) {
-  //   // ---- (1) warm start + 稀疏采样 --------------------------------------------------
-  //   const double safety = 1e-4;
-  //   double best_s = 0.0;
-  //   auto dist2_at = [&](double s) {
-  //     double dx = cx.evaluate(s) - x0;
-  //     double dy = cy.evaluate(s) - y0;
-  //     return dx * dx + dy * dy;
-  //   };
-
-  //   double best_d2 = std::numeric_limits<double>::infinity();
-  //   if (0) {
-  //     best_s = std::clamp(s_prev_opt.value(), safety, s_max - safety);
-  //     best_d2 = dist2_at(best_s);
-  //   } else {
-  //     const int coarse_N = 256;
-  //     for (int i = 0; i <= coarse_N; ++i) {
-  //       double s_c = s_max * i / coarse_N;
-  //       double d2 = dist2_at(s_c);
-  //       if (d2 < best_d2) {
-  //         best_d2 = d2;
-  //         best_s = s_c;
-  //       }
-  //     }
-  //   }
-  //   std::cout.setf(std::ios::fixed);
-  //   // std::cout << std::setprecision(8);
-
-  //   // 打印 (x0,y0) 到样条每个节点 (s_i) 的距离平方
-  //   for (size_t i = 0; i < cx.segmentCount() + 1; ++i) {
-  //     double dx = cx.evaluate(cx.knot(i)) - x0;
-  //     double dy = cy.evaluate(cx.knot(i)) - y0;
-  //     std::cout << "node[" << i << "]  s=" << cx.knot(i) << "  d2=" << dx * dx + dy * dy << '\n';
-  //   }
-  //   // ---- (2) 对每段解析求垂足 (D'(u)=0 的五次多项式) -------------------------------
-  //   const size_t Nseg = cx.segmentCount();
-  //   for (size_t k = 0; k < Nseg; ++k) {
-  //     const double s_left = cx.knot(k);
-  //     const double h = cx.segmentLength(k);
-  //     // std::cout<<"s_left\n";
-
-  //     // 取系数： x(s) = a0 + a1 u + a2 u² + a3 u³,   u ∈ [0,h]
-  //     const auto ax = cx.coeff(k);
-  //     const auto ay = cy.coeff(k);
-
-  //     // 平移到 (x0,y0) 并展开五次多项式系数
-  //     Eigen::Matrix<double, 6, 1> c;
-  //     c.setZero();
-  //     const double a0 = ax[0] - x0, a1 = ax[1], a2 = ax[2], a3 = ax[3];
-  //     const double b0 = ay[0] - y0, b1 = ay[1], b2 = ay[2], b3 = ay[3];
-
-  //     c[5] = 10 * (a3 * a3 + b3 * b3);
-  //     c[4] = 8 * (a2 * a3 + b2 * b3);
-  //     c[3] = 6 * (a1 * a3 + a2 * a2 + b1 * b3 + b2 * b2);
-  //     c[2] = 4 * (a0 * a3 + a1 * a2 + b0 * b3 + b1 * b2);
-  //     c[1] = 2 * (a0 * a2 + a1 * a1 + b0 * b2 + b1 * b1);
-  //     c[0] = 2 * (a0 * a1 + b0 * b1);
-
-  //     // -- 求根
-  //     Eigen::PolynomialSolver<double, Eigen::Dynamic> solver;
-  //     solver.compute(c);
-  //     const auto &roots = solver.roots();
-
-  //     auto check = [&](double u) {
-  //       if (u < 0.0 || u > h) return;
-  //       const double uu = u * u, u3 = uu * u;
-  //       const double x = ax[0] + ax[1] * u + ax[2] * uu + ax[3] * u3;
-  //       const double y = ay[0] + ay[1] * u + ay[2] * uu + ay[3] * u3;
-  //       const double d2 = (x - x0) * (x - x0) + (y - y0) * (y - y0);
-  //       if (d2 < best_d2) {
-  //         best_d2 = d2;
-  //         best_s = s_left + u;
-  //       }
-  //     };
-
-  //     for (int i = 0; i < roots.size(); ++i)
-  //       if (roots[i].imag() == 0.0) check(roots[i].real());
-
-  //     check(0.0);  // 左端
-  //     check(h);    // 右端
-  //   }
-
-  //   // ---- (3) 汇总 ---------------------------------------------------------------
-  //   ClosestState st;
-  //   st.s = best_s;
-  //   st.x = cx.evaluate(best_s);
-  //   st.y = cy.evaluate(best_s);
-  //   st.dist2 = best_d2;
-  //   s_prev_opt = best_s;  // 下帧 warm-start
-  //   return st;
-  // }
-
-  // struct ClosestState {
-  //   double s;      // 匹配的弧长
-  //   double x, y;   // 曲线上坐标
-  //   double dist2;  // 距离平方
-  // };
+  
   ClosestState continuousClosest(double x0, double y0, double s_max, int max_iter ) {
-    const double safety = 1e-4 * s_max;  // 距端点 ≥ 0.01 %
+    const double safety = 1e-4 * s_max;  
     double s = 0.0;
 
     // if (s_prev_opt.has_value()) {
@@ -439,11 +337,11 @@ struct CubicSpline2D::CubicSpline2DImpl {
       s = std::clamp(s, safety, s_max - safety);
     }
 
-    /* ---------- (2)  迭代求最近点 ------------------------------ */
-    constexpr double eps_s = 1e-10;     // s 收敛阈
-    constexpr double eps_G = 1e-10;     // |G| 收敛阈
-    constexpr double eps_Gp = 1e-12;    // “二阶导退化” 判据
-    constexpr double step_limit = 0.1;  // trust-region
+
+    constexpr double eps_s = 1e-10;     
+    constexpr double eps_G = 1e-10;    
+    constexpr double eps_Gp = 1e-12;   
+    constexpr double step_limit = 0.1;  
 
     for (int it = 0; it < max_iter; ++it) {
       double xs = cx.evaluate(s);
@@ -459,13 +357,13 @@ struct CubicSpline2D::CubicSpline2DImpl {
       double G = rx * dxs + ry * dys;
       double Gp = dxs * dxs + dys * dys + rx * ddxs + ry * ddys;
 
-      /* ---- 收敛判据：梯度近零 且 二阶导不再显著 --------- */
+   
       if (std::abs(G) < eps_G || std::abs(Gp) < eps_Gp) break;
 
-      /* ---- 处理导数退化：|r′|² 太小 → 小步侧移 ---------- */
+
       double grad2 = dxs * dxs + dys * dys;
       if (grad2 < 1e-8) {
-        double h = 0.01 * s_max;  // 1 % 的小步
+        double h = 0.01 * s_max;  
         double s1 = std::min(s + h, s_max - safety);
         double s2 = std::max(s - h, safety);
 
@@ -478,13 +376,13 @@ struct CubicSpline2D::CubicSpline2DImpl {
         continue;  // 重新迭代
       }
 
-      /* ---- Newton + trust-region  --------------------------- */
+
       double delta;
       if (std::abs(Gp) >= eps_Gp) {
         delta = -G / Gp;
         delta = std::clamp(delta, -step_limit, step_limit);
       } else {
-        /* 二阶导≈0：退化成梯度下降 */
+    
         delta = -G / (std::sqrt(grad2) + 1e-12) * 0.05;  // 再×5 %
       }
 
@@ -497,7 +395,7 @@ struct CubicSpline2D::CubicSpline2DImpl {
       s = s_new;
     }
 
-    /* ---------- (3)  汇总结果 --------------------------------- */
+
     ClosestState st;
     st.s = s;
     s_prev_opt = s;  // 供下一次 warm-start
@@ -514,93 +412,6 @@ struct CubicSpline2D::CubicSpline2DImpl {
     st.lat_err = (-dx * dys + dy * dxs) / (tang_mag + 1e-12);
     return st;
   }
-
-  // ClosestState continuousClosest(double x0, double y0, double s_max, int max_iter = 6) {
-  //   /* ---------- (1) 初值 ------------------------------ */
-  //   double s = 0.0;
-  //   std::cout << "x0=" << x0 << "  y0=" << y0 << '\n';
-  //   if (s_prev_opt.has_value()) {
-  //     s = std::clamp(s_prev_opt.value(), 0.0, s_max);
-
-  //   } else {
-  //     // ▸ 第一次没有 warm-start：在稀疏采样里粗找最近点
-  //     constexpr int coarse_N = 64;  // 64 个点足够
-  //     double best_d2 = std::numeric_limits<double>::max();
-  //     for (int i = 0; i <= coarse_N; ++i) {
-  //       double s_c = s_max * i / coarse_N;
-  //       double rx = cx.evaluate(s_c) - x0;
-  //       double ry = cy.evaluate(s_c) - y0;
-  //       double dist2 = rx * rx + ry * ry;
-  //       if (dist2 < best_d2) {
-  //         best_d2 = dist2;
-  //         s = s_c;
-  //       }
-  //     }
-  //   }
-
-  //   const double eps = 1e-8;  // 收敛阈值
-  //   for (int it = 0; it < max_iter; ++it) {
-  //     const double xs = cx.evaluate(s);
-  //     const double ys = cy.evaluate(s);
-  //     const double dxs = cx.firstDerivative(s);
-  //     const double dys = cy.firstDerivative(s);
-  //     const double ddxs = cx.secondDerivative(s);
-  //     const double ddys = cy.secondDerivative(s);
-
-  //     const double rx = xs - x0;
-  //     const double ry = ys - y0;
-
-  //     const double G = rx * dxs + ry * dys;                             // F′
-  //     const double Gp = dxs * dxs + dys * dys + rx * ddxs + ry * ddys;  // F″
-  //     std::cout << "G=" << G << "  GP=" << Gp << '\n';
-  //     const double epsG = 1e-10;      // 对 G 的收敛要求
-  //     const double epsGp = 1e-12;     // 对 G' 的退化判断
-  //     const double step_limit = 0.5;  // 牛顿步长上限（防飞）
-  //     // 1) 只有同时满足 |G| 和 |Gp| 都小才算收敛
-  //     if (std::abs(G) < epsG && std::abs(Gp) < epsGp) break;
-
-  //     double delta;  // 下一步的尝试位移
-  //     if (std::abs(Gp) >= epsGp) {
-  //       // 正常牛顿
-  //       delta = -G / Gp;
-  //       // 2) 给牛顿步加个 trust-region
-  //       delta = std::clamp(delta, -step_limit, step_limit);
-  //     } else {
-  //       // 二阶导退化，退回到梯度下降
-  //       double grad_norm = std::hypot(dxs, dys) + 1e-12;
-  //       delta = -G / grad_norm * 0.05;  // 小步走
-  //     }
-
-  //     double s_new = std::clamp(s + delta, 0.0, s_max);
-
-  //     if (std::abs(s_new - s) < eps) {
-  //       s = s_new;
-  //       break;
-  //     }
-  //     s = s_new;
-
-  //     // if (std::abs(Gp) < 1e-12) break;                                  // 近直线段：提前结束
-
-  //     // double s_new = s - G / Gp;              // Newton 步
-  //     // s_new = std::clamp(s_new, 0.0, s_max);  // 保证落在合法区间
-
-  //     std::cout <<"i="<<it<< "  s_new=" << s_new << "  s_max=" << s_max <<"rx="<<rx<<" ry="<<ry<< '\n';
-  //     // if (std::abs(s_new - s) < eps) {  // 收敛判据
-  //     //   s = s_new;
-  //     //   break;
-  //     // }
-  //     // s = s_new;  // 继续迭代
-  //   }
-
-  //   /* ---------- (3) 汇总结果 -------------------------- */
-  //   ClosestState st;
-  //   st.s = s;
-  //   s_prev_opt = st.s;
-  //   st.x = cx.evaluate(s);
-  //   st.y = cy.evaluate(s);
-  //   st.dist2 = std::pow(st.x - x0, 2) + std::pow(st.y - y0, 2);
-  //   return st;
-  // }
 };
 
 CubicSpline2D::CubicSpline2D(const double *x, const double *y, unsigned long len)
@@ -608,13 +419,16 @@ CubicSpline2D::CubicSpline2D(const double *x, const double *y, unsigned long len
 
 ClosestState CubicSpline2D::continuousClosest(double state_x, double state_y) {
   auto res = p_->continuousClosest(state_x, state_y, p_->es[p_->es.size() - 1],10);
-  // return ClosestState{};
   return res;
 }
 
 void CubicSpline2D::findTargetPoint(const ClosestState &cs, double ld, double &target_x, double &target_y) {
   auto target_s = ld + cs.s;
   std::tie(target_x, target_y) = p_->pointAt(target_s);
+}
+
+void CubicSpline2D::pointAt(double s, double &target_x, double &target_y) {
+  std::tie(target_x, target_y) = p_->pointAt(s);
 }
 
 size_t CubicSpline2D::getSamplePointsCount(double ds) { return p_->getSamplePointsCount(ds); }
