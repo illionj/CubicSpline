@@ -38,8 +38,12 @@ file(COPY ${SCRIPT_FILES} DESTINATION "${BUNDLE_DIR}/scripts")
 
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN YES)
+
+
 add_subdirectory(src)
-add_subdirectory(example)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  add_subdirectory(example)
+endif()
 
 
 
