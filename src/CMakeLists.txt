@@ -6,11 +6,15 @@ endif()
 add_library(cubic_spline  SHARED ${FILES})
 target_include_directories(cubic_spline 
   PUBLIC
-    # BUILD 时：puresuitlib 自己的 include
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    # install 后 find_package 时：install 目录下的 include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<INSTALL_INTERFACE:include>
 )
+
+# target_include_directories(cubic_spline
+#   PUBLIC
+#     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>   
+#     $<INSTALL_INTERFACE:include>
+# )
 
 # 编库时告诉头文件 “我在导出”
 target_compile_definitions(cubic_spline PRIVATE TS_BUILD_DLL)

@@ -17,6 +17,7 @@ set (CMAKE_CXX_FLAGS_RELEASE             "${CMAKE_CXX_FLAGS_RELEASE} -O2 -DNDEBU
 add_subdirectory("third_party/eigen" EXCLUDE_FROM_ALL) 
 
 # ===== unified output directory =====
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 set(BUNDLE_DIR "${CMAKE_BINARY_DIR}/bundle")
 
 
@@ -34,7 +35,7 @@ endforeach()
 # ===== copy scripts =====
 file(GLOB SCRIPT_FILES "${CMAKE_SOURCE_DIR}/scripts/*")
 file(COPY ${SCRIPT_FILES} DESTINATION "${BUNDLE_DIR}/scripts")
-
+endif()
 
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN YES)
