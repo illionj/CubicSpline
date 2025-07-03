@@ -45,7 +45,7 @@ class TS_EXPORT CubicSpline2D {
 
   CubicSpline2D(const CubicSpline2D &) = delete;
   CubicSpline2D &operator=(const CubicSpline2D &) = delete;
-
+  void debug(char *info, size_t len);
   /**
    * @brief  给定某点,寻找当前插值曲线上的最近点,支持复用结果
    * @param  state_x:
@@ -56,17 +56,17 @@ class TS_EXPORT CubicSpline2D {
 
   /**
    * @brief  根据弧长计算目标点
-   * @param  s: 
-   * @param  target_x: 
-   * @param  target_y: 
+   * @param  s:
+   * @param  target_x:
+   * @param  target_y:
    */
   void pointAt(double s, double &target_x, double &target_y);
   /**
    * @brief  专供pure_pursuit的接口,寻找目标点
-   * @param  cs: 
-   * @param  ld: 
-   * @param  target_x: 
-   * @param  target_y: 
+   * @param  cs:
+   * @param  ld:
+   * @param  target_x:
+   * @param  target_y:
    */
   void findTargetPoint(const ClosestState &cs, double ld, double &target_x, double &target_y);
 

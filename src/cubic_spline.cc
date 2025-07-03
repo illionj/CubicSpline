@@ -5,6 +5,9 @@
 #include <Eigen/QR>
 #include <algorithm>  // std::lower_bound
 #include <cstddef>
+#include <cstring>  // std::strncpy, std::memset
+#include <iomanip>
+#include <sstream>
 #include <unsupported/Eigen/CXX11/Tensor>
 #include <unsupported/Eigen/Polynomials>
 
@@ -23,16 +26,19 @@ class CubicSpline1D {
     h_ = s_.segment(1, nx_ - 1) - s_.segment(0, nx_ - 1);
     // std::cout<<"h="<<h_<<"\n";
 
-    buildSystem();
+    // buildSystem();
 
     // c_.resize(nx_ - 1);
     // c_ = A_.triangularView<Eigen::UnitLower>().solve(B_);
     // c_ = A_.colPivHouseholderQr().solve(B_);
 
-    // Thomas 算法
-    Eigen::VectorXd lower(nx_ - 1), diag(nx_), upper(nx_ - 1), rhs(nx_);
 
-    diag.setOnes();
+    // Thomas 三对角求解
+    Eigen::VectorXd lower(nx_ - 1), diag(nx_), upper(nx_ - 1), rhs(nx_);
+    lower.setZero();
+    upper.setZero();
+
+    diag.setOnes(); 
     rhs.setZero();
 
     for (size_t i = 1; i < nx_ - 1; ++i) {
@@ -41,7 +47,8 @@ class CubicSpline1D {
       upper(i) = h_(i);
       rhs(i) = 3.0 * ((a_(i + 1) - a_(i)) / h_(i) - (a_(i) - a_(i - 1)) / h_(i - 1));
     }
-    upper(nx_ - 2) = h_(nx_ - 2);
+    upper(nx_ - 2) = h_(nx_ - 2);  // 最后一行上对角
+    // lower(nx_-2) 已在 setZero() 中正确置 0（自然边界）
 
     for (size_t i = 1; i < nx_; ++i) {
       double w = lower(i - 1) / diag(i - 1);
@@ -49,13 +56,14 @@ class CubicSpline1D {
       rhs(i) -= w * rhs(i - 1);
     }
 
+ 
     c_.resize(nx_);
     c_(nx_ - 1) = rhs(nx_ - 1) / diag(nx_ - 1);
-
-    for (int i = int(nx_) - 2; i >= 0; --i) {
+    for (int i = static_cast<int>(nx_) - 2; i >= 0; --i) {
       c_(i) = (rhs(i) - upper(i) * c_(i + 1)) / diag(i);
     }
 
+  
     b_.resize(nx_ - 1);
     d_.resize(nx_ - 1);
     for (size_t i = 0; i < nx_ - 1; ++i) {
@@ -65,6 +73,8 @@ class CubicSpline1D {
   }
 
   size_t findInterval(double s_query) const {
+    if (s_query <= s_(0)) return 0;
+    if (s_query >= s_(nx_ - 1)) return nx_ - 2;
     return static_cast<size_t>(std::lower_bound(s_.data(), s_.data() + nx_, s_query) - s_.data()) - 1;
   }
 
@@ -154,16 +164,16 @@ class CubicSpline1D {
     return a_(i) + b_(i) * dx + c_(i) * dx * dx + d_(i) * dx * dx * dx;
   }
 
-
   size_t segmentCount() const { return nx_ - 1; }
 
-
   double knot(size_t i) const { return s_(i); }
-
 
   double segmentLength(size_t i) const { return h_(i); }
 
   Eigen::Vector4d coeff(size_t i) const { return {a_(i), b_(i), c_(i), d_(i)}; }
+
+  const Eigen::MatrixXd &A() const noexcept { return A_; }
+  const Eigen::VectorXd &B() const noexcept { return B_; }
 
  private:
   void buildSystem() {
@@ -196,27 +206,47 @@ class CubicSpline1D {
   size_t nx_{0};
 };
 
+// Eigen::VectorXd xy2s(const Eigen::VectorXd &x, const Eigen::VectorXd &y) {
+//   const Eigen::Index n = x.size();
+//   if (n < 2)  // 0 点或 1 点时，弧长恒为 0
+//     return Eigen::VectorXd::Zero(n);
+
+//   Eigen::ArrayXd dx = x.tail(n - 1) - x.head(n - 1);
+//   Eigen::ArrayXd dy = y.tail(n - 1) - y.head(n - 1);
+//   Eigen::ArrayXd seg = (dx.square() + dy.square()).sqrt();  // 每段弧长
+
+//   Eigen::VectorXd s(n);
+//   s(0) = 0.0;
+
+//   s.tail(n - 1) = seg.matrix();
+//   for (Eigen::Index i = 1; i < n - 1; ++i) s(i + 1) += s(i);
+
+//   return s;
+// }
+
 Eigen::VectorXd xy2s(const Eigen::VectorXd &x, const Eigen::VectorXd &y) {
   const Eigen::Index n = x.size();
-  if (n < 2)  // 0 点或 1 点时，弧长恒为 0
-    return Eigen::VectorXd::Zero(n);
+  Eigen::VectorXd s(n);
 
+  if (n == 0) return s;
+  if (n == 1) {
+    s.setZero();
+    return s;
+  }
 
   Eigen::ArrayXd dx = x.tail(n - 1) - x.head(n - 1);
   Eigen::ArrayXd dy = y.tail(n - 1) - y.head(n - 1);
-  Eigen::ArrayXd seg = (dx.square() + dy.square()).sqrt();  // 每段弧长
+  Eigen::ArrayXd seg = (dx.square() + dy.square()).sqrt();  // 每段长
 
+  if ((!dx.isFinite()).any() || (!dy.isFinite()).any()) throw std::runtime_error("xy2s(): x/y contains NaN or Inf");
+  if ((!seg.isFinite()).any()) throw std::runtime_error("xy2s(): segment length NaN/Inf");
+  if ((seg <= 0).any()) throw std::runtime_error("xy2s(): duplicated consecutive points");
 
-  Eigen::VectorXd s(n);
-  s(0) = 0.0;
-
-#if defined(EIGEN_CXX11_TENSOR_MODULE)    
-  s.tail(n - 1) = seg.cumsum(0).matrix();  // 0 轴（唯一轴）做前缀和 :contentReference[oaicite:0]{index=0}
-#else
-  
+  s.setZero();
   s.tail(n - 1) = seg.matrix();
-  for (Eigen::Index i = 1; i < n - 1; ++i) s(i + 1) += s(i);  // 等价于 inclusive_scan
-#endif
+
+  s[0] = 0.0;
+  for (Eigen::Index i = 1; i < n; ++i) s[i] = s[i - 1] + seg[i - 1];
 
   return s;
 }
@@ -257,6 +287,7 @@ struct CubicSpline2D::CubicSpline2DImpl {
   Eigen::VectorXd ex;
   Eigen::VectorXd ey;
   Eigen::VectorXd es;
+  double _s_max;
   CubicSpline1D cx;
   CubicSpline1D cy;
   std::optional<double> s_prev_opt;
@@ -267,16 +298,16 @@ struct CubicSpline2D::CubicSpline2DImpl {
         es(xy2s(ex, ey)),
         cx(es, ex),
         cy(es, ey),
-        s_prev_opt(std::nullopt) {}
+        s_prev_opt(std::nullopt) {
+    _s_max = es(es.size() - 1);
+  }
 
   size_t getSamplePointsCount(double ds) {
-    double stop = es(es.size() - 1);
     // std::ptrdiff
-    return static_cast<std::size_t>(std::floor(stop / ds));
+    return static_cast<std::size_t>(std::floor(_s_max / ds));
   }
 
   Eigen::VectorXd getSamplePoints(double ds) {
-    double stop = es(es.size() - 1);
     // std::ptrdiff
     auto N = getSamplePointsCount(ds);
     return Eigen::VectorXd::LinSpaced(N, 0.0, (N - 1) * ds);
@@ -298,11 +329,9 @@ struct CubicSpline2D::CubicSpline2DImpl {
 
   std::pair<double, double> pointAt(double s) { return std::pair<double, double>(cx.evaluate(s), cy.evaluate(s)); }
 
-
   double slopeAt(double s) const {
     double dx = cx.firstDerivative(s);
     double dy = cy.firstDerivative(s);
-
 
     constexpr double kEps = 1e-12;
     if (std::abs(dx) < kEps) {
@@ -312,13 +341,56 @@ struct CubicSpline2D::CubicSpline2DImpl {
     // return std::atan2(dy, dx);   // 航向角（弧度）
   }
 
-  
-  ClosestState continuousClosest(double x0, double y0, double s_max, int max_iter ) {
-    const double safety = 1e-4 * s_max;  
+
+
+  void debug(char *info, size_t len) {
+    if (!info || len == 0) return;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(6);
+
+    /* -------- 基本信息 -------- */
+    oss << "======== CubicSpline2D Debug ========\n";
+    oss << "Control  points (N) : " << ex.size() << '\n';
+    oss << "Segment  count      : " << cx.segmentCount() << '\n';
+    oss << "Total arc length    : " << _s_max << "\n\n";
+
+    /* -------- 每段系数 -------- */
+    for (size_t i = 0; i < cx.segmentCount(); ++i) {
+      const double s0 = cx.knot(i);
+      const double s1 = cx.knot(i + 1);
+      auto cx_coef = cx.coeff(i);
+      auto cy_coef = cy.coeff(i);
+
+      oss << "---- Segment " << i << "  (s in [" << s0 << ", " << s1 << "]) ----\n"
+          << "X(s) = " << cx_coef[0] << " + " << cx_coef[1] << "*ds + " << cx_coef[2] << "*ds^2 + " << cx_coef[3]
+          << "*ds^3\n"
+          << "Y(s) = " << cy_coef[0] << " + " << cy_coef[1] << "*ds + " << cy_coef[2] << "*ds^2 + " << cy_coef[3]
+          << "*ds^3\n\n";
+    }
+
+    // 调用buildsystem后才能使用
+    // Eigen::IOFormat mat_fmt(6, 0, " ", "\n", "[", "]");
+    // oss << "===== Ax = B for X-dimension spline =====\n";
+    // oss << "A_x =\n" << cx.A().format(mat_fmt) << "\n\n";
+    // oss << "B_x =\n" << cx.B().transpose().format(mat_fmt) << "\n\n";
+
+    // oss << "===== Ay = B for Y-dimension spline =====\n";
+    // oss << "A_y =\n" << cy.A().format(mat_fmt) << "\n\n";
+    // oss << "B_y =\n" << cy.B().transpose().format(mat_fmt) << "\n\n";
+
+    
+    const std::string str = oss.str();
+    std::size_t copy_len = std::min(len - 1, str.size());
+    std::memcpy(info, str.data(), copy_len);
+    info[copy_len] = '\0';
+  }
+
+  ClosestState continuousClosest(double x0, double y0, double s_max, int max_iter) {
+    const double safety = 1e-4 * s_max;
     double s = 0.0;
 
     // if (s_prev_opt.has_value()) {
-      if (0) {
+    if (0) {
       s = std::clamp(s_prev_opt.value(), safety, s_max - safety);
     } else {
       /* 在稀疏采样里粗找最近点；采样多一点避免落到端点   */
@@ -337,11 +409,10 @@ struct CubicSpline2D::CubicSpline2DImpl {
       s = std::clamp(s, safety, s_max - safety);
     }
 
-
-    constexpr double eps_s = 1e-10;     
-    constexpr double eps_G = 1e-10;    
-    constexpr double eps_Gp = 1e-12;   
-    constexpr double step_limit = 0.1;  
+    constexpr double eps_s = 1e-10;
+    constexpr double eps_G = 1e-10;
+    constexpr double eps_Gp = 1e-12;
+    constexpr double step_limit = 0.1;
 
     for (int it = 0; it < max_iter; ++it) {
       double xs = cx.evaluate(s);
@@ -357,13 +428,11 @@ struct CubicSpline2D::CubicSpline2DImpl {
       double G = rx * dxs + ry * dys;
       double Gp = dxs * dxs + dys * dys + rx * ddxs + ry * ddys;
 
-   
       if (std::abs(G) < eps_G || std::abs(Gp) < eps_Gp) break;
-
 
       double grad2 = dxs * dxs + dys * dys;
       if (grad2 < 1e-8) {
-        double h = 0.01 * s_max;  
+        double h = 0.01 * s_max;
         double s1 = std::min(s + h, s_max - safety);
         double s2 = std::max(s - h, safety);
 
@@ -376,13 +445,11 @@ struct CubicSpline2D::CubicSpline2DImpl {
         continue;  // 重新迭代
       }
 
-
       double delta;
       if (std::abs(Gp) >= eps_Gp) {
         delta = -G / Gp;
         delta = std::clamp(delta, -step_limit, step_limit);
       } else {
-    
         delta = -G / (std::sqrt(grad2) + 1e-12) * 0.05;  // 再×5 %
       }
 
@@ -395,10 +462,9 @@ struct CubicSpline2D::CubicSpline2DImpl {
       s = s_new;
     }
 
-
     ClosestState st;
     st.s = s;
-    s_prev_opt = s;  // 供下一次 warm-start
+    s_prev_opt = s;
     st.x = cx.evaluate(s);
     st.y = cy.evaluate(s);
     double dx = st.x - x0;
@@ -418,7 +484,7 @@ CubicSpline2D::CubicSpline2D(const double *x, const double *y, unsigned long len
     : p_(std::make_unique<CubicSpline2DImpl>(x, y, len)) {}
 
 ClosestState CubicSpline2D::continuousClosest(double state_x, double state_y) {
-  auto res = p_->continuousClosest(state_x, state_y, p_->es[p_->es.size() - 1],10);
+  auto res = p_->continuousClosest(state_x, state_y, p_->_s_max, 10);
   return res;
 }
 
@@ -432,6 +498,7 @@ void CubicSpline2D::pointAt(double s, double &target_x, double &target_y) {
 }
 
 size_t CubicSpline2D::getSamplePointsCount(double ds) { return p_->getSamplePointsCount(ds); }
+void CubicSpline2D::debug(char *info, size_t len) { return p_->debug(info, len); }
 
 void CubicSpline2D::cubicSpline(double *out_x, double *out_y, double ds) { p_->cubicSpline(out_x, out_y, ds); }
 CubicSpline2D::~CubicSpline2D() = default;
