@@ -32,13 +32,12 @@ class CubicSpline1D {
     // c_ = A_.triangularView<Eigen::UnitLower>().solve(B_);
     // c_ = A_.colPivHouseholderQr().solve(B_);
 
-
     // Thomas 三对角求解
     Eigen::VectorXd lower(nx_ - 1), diag(nx_), upper(nx_ - 1), rhs(nx_);
     lower.setZero();
     upper.setZero();
 
-    diag.setOnes(); 
+    diag.setOnes();
     rhs.setZero();
 
     for (size_t i = 1; i < nx_ - 1; ++i) {
@@ -56,14 +55,12 @@ class CubicSpline1D {
       rhs(i) -= w * rhs(i - 1);
     }
 
- 
     c_.resize(nx_);
     c_(nx_ - 1) = rhs(nx_ - 1) / diag(nx_ - 1);
     for (int i = static_cast<int>(nx_) - 2; i >= 0; --i) {
       c_(i) = (rhs(i) - upper(i) * c_(i + 1)) / diag(i);
     }
 
-  
     b_.resize(nx_ - 1);
     d_.resize(nx_ - 1);
     for (size_t i = 0; i < nx_ - 1; ++i) {
@@ -288,6 +285,7 @@ struct CubicSpline2D::CubicSpline2DImpl {
   Eigen::VectorXd ey;
   Eigen::VectorXd es;
   double _s_max;
+  double safety;
   CubicSpline1D cx;
   CubicSpline1D cy;
   std::optional<double> s_prev_opt;
@@ -300,6 +298,12 @@ struct CubicSpline2D::CubicSpline2DImpl {
         cy(es, ey),
         s_prev_opt(std::nullopt) {
     _s_max = es(es.size() - 1);
+    safety = 1e-4 * _s_max;
+  }
+
+  double getSmax()
+  {
+    return _s_max-safety;
   }
 
   size_t getSamplePointsCount(double ds) {
@@ -327,7 +331,10 @@ struct CubicSpline2D::CubicSpline2DImpl {
     }
   }
 
-  std::pair<double, double> pointAt(double s) { return std::pair<double, double>(cx.evaluate(s), cy.evaluate(s)); }
+  std::pair<double, double> pointAt(double s) { 
+    s=std::clamp(s, 0.0,getSmax());
+    return std::pair<double, double>(cx.evaluate(s), cy.evaluate(s));
+  }
 
   double slopeAt(double s) const {
     double dx = cx.firstDerivative(s);
@@ -340,8 +347,6 @@ struct CubicSpline2D::CubicSpline2DImpl {
     return dy / dx;  // 斜率 dy/dx
     // return std::atan2(dy, dx);   // 航向角（弧度）
   }
-
-
 
   void debug(char *info, size_t len) {
     if (!info || len == 0) return;
@@ -378,7 +383,6 @@ struct CubicSpline2D::CubicSpline2DImpl {
     // oss << "A_y =\n" << cy.A().format(mat_fmt) << "\n\n";
     // oss << "B_y =\n" << cy.B().transpose().format(mat_fmt) << "\n\n";
 
-    
     const std::string str = oss.str();
     std::size_t copy_len = std::min(len - 1, str.size());
     std::memcpy(info, str.data(), copy_len);
@@ -386,7 +390,6 @@ struct CubicSpline2D::CubicSpline2DImpl {
   }
 
   ClosestState continuousClosest(double x0, double y0, double s_max, int max_iter) {
-    const double safety = 1e-4 * s_max;
     double s = 0.0;
 
     // if (s_prev_opt.has_value()) {
@@ -497,6 +500,7 @@ void CubicSpline2D::pointAt(double s, double &target_x, double &target_y) {
   std::tie(target_x, target_y) = p_->pointAt(s);
 }
 
+double CubicSpline2D ::getSmax(){return p_->getSmax();}
 size_t CubicSpline2D::getSamplePointsCount(double ds) { return p_->getSamplePointsCount(ds); }
 void CubicSpline2D::debug(char *info, size_t len) { return p_->debug(info, len); }
 

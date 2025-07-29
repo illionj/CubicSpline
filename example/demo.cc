@@ -69,6 +69,7 @@ int main() {
 
   auto N = c2->getSamplePointsCount(ds);
   std::cout << "points count=" << N << '\n';
+  std::cout<<"s_max="<<c2->getSmax()<<"\n";
   std::vector<double> cx(N, 0.0);
   std::vector<double> cy(N, 0.0);
   c2->cubicSpline(cx.data(), cy.data(), ds);

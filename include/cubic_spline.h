@@ -55,6 +55,11 @@ class TS_EXPORT CubicSpline2D {
   ClosestState continuousClosest(double state_x, double state_y);
 
   /**
+   * @brief  获取当前插值结果的最大(安全)弧长
+   */
+  double getSmax();
+
+  /**
    * @brief  根据弧长计算目标点
    * @param  s:
    * @param  target_x:
